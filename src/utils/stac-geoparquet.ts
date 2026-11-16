@@ -219,7 +219,10 @@ export function datetimeFilterWhere(
 ): string {
   const start = new Date(filter[0]).toISOString();
   const end = new Date(filter[1]).toISOString();
-  return `${columns.end} >= TIMESTAMP '${start}' AND ${columns.start} <= TIMESTAMP '${end}'`;
+  // TIMESTAMPTZ, not TIMESTAMP: a naive literal is compared to the
+  // tz-aware stac-geoparquet columns in the session time zone, which
+  // duckdb-wasm takes from the browser, shifting the bounds by its offset
+  return `${columns.end} >= TIMESTAMPTZ '${start}' AND ${columns.start} <= TIMESTAMPTZ '${end}'`;
 }
 
 async function getDatetimeColumns({

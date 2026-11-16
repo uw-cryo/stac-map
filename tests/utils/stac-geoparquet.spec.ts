@@ -53,7 +53,7 @@ describe("datetimeFilterWhere", () => {
         filter
       )
     ).toBe(
-      "end_datetime >= TIMESTAMP '2020-01-01T00:00:00.000Z' AND start_datetime <= TIMESTAMP '2020-12-31T00:00:00.000Z'"
+      "end_datetime >= TIMESTAMPTZ '2020-01-01T00:00:00.000Z' AND start_datetime <= TIMESTAMPTZ '2020-12-31T00:00:00.000Z'"
     );
   });
 
@@ -61,7 +61,7 @@ describe("datetimeFilterWhere", () => {
     expect(
       datetimeFilterWhere({ start: "datetime", end: "datetime" }, filter)
     ).toBe(
-      "datetime >= TIMESTAMP '2020-01-01T00:00:00.000Z' AND datetime <= TIMESTAMP '2020-12-31T00:00:00.000Z'"
+      "datetime >= TIMESTAMPTZ '2020-01-01T00:00:00.000Z' AND datetime <= TIMESTAMPTZ '2020-12-31T00:00:00.000Z'"
     );
   });
 });
