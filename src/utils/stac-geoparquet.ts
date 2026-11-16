@@ -58,11 +58,19 @@ export async function fetchStacGeoparquetValue({
     connection,
     hivePartitioning,
   });
-  const datetimeExtent = await fetchStacGeoparquetDatetimeExtent({
+  const datetimeColumns = await getDatetimeColumns({
     href,
     connection,
     hivePartitioning,
   });
+  const datetimeExtent = datetimeColumns
+    ? await fetchStacGeoparquetDatetimeExtent({
+        href,
+        connection,
+        hivePartitioning,
+        datetimeColumns,
+      })
+    : null;
   return {
     type: "FeatureCollection",
     id: href.split("/").pop(),
@@ -70,6 +78,7 @@ export async function fetchStacGeoparquetValue({
     bbox,
     features: [],
     datetimeExtent,
+    datetimeColumns,
     assets: {
       data: {
         href: href,
@@ -171,7 +180,49 @@ async function getBboxColumnType({
   }
 }
 
-async function fetchStacGeoparquetDatetimeExtent({
+/**
+ * SQL expressions for the start and end of each row's time span.
+ *
+ * STAC allows `datetime` to be null when `start_datetime` and `end_datetime`
+ * are set, so a file may carry instants, ranges, or a mix. These mirror
+ * `getItemDatetimeMs`: `datetime` wins when present, the range otherwise.
+ */
+export interface StacGeoparquetDatetimeColumns {
+  start: string;
+  end: string;
+}
+
+export function datetimeColumnsFromNames(
+  names: Iterable<string>
+): StacGeoparquetDatetimeColumns | null {
+  const has = new Set(names);
+  const hasDatetime = has.has("datetime");
+  if (has.has("start_datetime") && has.has("end_datetime")) {
+    return hasDatetime
+      ? {
+          start: "COALESCE(datetime, start_datetime)",
+          end: "COALESCE(datetime, end_datetime)",
+        }
+      : { start: "start_datetime", end: "end_datetime" };
+  }
+  if (hasDatetime) return { start: "datetime", end: "datetime" };
+  return null;
+}
+
+/**
+ * WHERE clause keeping rows whose time span overlaps `filter`, the same test
+ * `itemMatchesFilter` applies to JSON items.
+ */
+export function datetimeFilterWhere(
+  columns: StacGeoparquetDatetimeColumns,
+  filter: [number, number]
+): string {
+  const start = new Date(filter[0]).toISOString();
+  const end = new Date(filter[1]).toISOString();
+  return `${columns.end} >= TIMESTAMP '${start}' AND ${columns.start} <= TIMESTAMP '${end}'`;
+}
+
+async function getDatetimeColumns({
   href,
   connection,
   hivePartitioning,
@@ -179,13 +230,36 @@ async function fetchStacGeoparquetDatetimeExtent({
   href: string;
   connection: AsyncDuckDBConnection;
   hivePartitioning: boolean;
+}): Promise<StacGeoparquetDatetimeColumns | null> {
+  try {
+    const query = `DESCRIBE SELECT * FROM read_parquet('${href}', hive_partitioning = ${hivePartitioning})`;
+    const result = (await connection.query(query)) as unknown as Table;
+    const names = result
+      .toArray()
+      .map((row) => row.toJSON().column_name as string);
+    return datetimeColumnsFromNames(names);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchStacGeoparquetDatetimeExtent({
+  href,
+  connection,
+  hivePartitioning,
+  datetimeColumns,
+}: {
+  href: string;
+  connection: AsyncDuckDBConnection;
+  hivePartitioning: boolean;
+  datetimeColumns: StacGeoparquetDatetimeColumns;
 }): Promise<[number, number] | null> {
   try {
     const result = await executeDuckdbQuery({
       connection,
       href,
       hivePartitioning,
-      select: "MIN(datetime) as dt_min, MAX(datetime) as dt_max",
+      select: `MIN(${datetimeColumns.start}) as dt_min, MAX(${datetimeColumns.end}) as dt_max`,
     });
     const row = result.toArray().map((row) => row.toJSON())[0];
     const min = row?.dt_min ? new Date(row.dt_min).getTime() : NaN;
