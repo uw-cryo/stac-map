@@ -1,8 +1,12 @@
 name: Deploy
 
+# uw-cryo fork: deploy from the `uw-cryo` branch, not on upstream releases, so
+# `main` stays a clean mirror of developmentseed/stac-map that can be synced.
+# Our changes live on feature branches merged into `uw-cryo`.
 on:
-  release:
-    types: [published]
+  push:
+    branches:
+      - uw-cryo
   workflow_dispatch:
 
 
