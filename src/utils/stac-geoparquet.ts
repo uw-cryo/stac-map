@@ -293,6 +293,11 @@ export async function fetchStacGeoparquetTable({
     select:
       "ST_AsWKB(geometry) AS geometry, ST_GeometryType(geometry) AS geometry_type, id",
   });
+  // A filter can match nothing; that is an empty map, not an unsupported
+  // geometry type (the type is read from the first row)
+  if (result.numRows === 0) {
+    return { table: undefined, geometryType: undefined };
+  }
   const geometry: Uint8Array[] = result.getChildAt(0)?.toArray();
   const geometryType = result.getChildAt(1)?.toArray()[0]?.toLowerCase() as
     string | undefined;
